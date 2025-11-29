@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: gami_postgres
+    environment:
+      POSTGRES_USER: gami
+      POSTGRES_PASSWORD: gami
+      POSTGRES_DB: gami_protocol
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - gami_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: gami_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - gami_network
+
+  quest_generation_agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.quest
+    container_name: quest_generation_agent
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql://gami:gami@postgres:5432/gami_protocol
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - gami_network
+    restart: unless-stopped
+
+  economy_management_agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.economy
+    container_name: economy_management_agent
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=postgresql://gami:gami@postgres:5432/gami_protocol
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - gami_network
+    restart: unless-stopped
+
+  security_agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.security
+    container_name: security_agent
+    ports:
+      - "8003:8003"
+    environment:
+      - DATABASE_URL=postgresql://gami:gami@postgres:5432/gami_protocol
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - gami_network
+    restart: unless-stopped
+
+  supervisor_agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.supervisor
+    container_name: supervisor_agent
+    ports:
+      - "8800:8800"
+    environment:
+      - QUEST_AGENT_URL=http://quest_generation_agent:8001
+      - ECONOMY_AGENT_URL=http://economy_management_agent:8002
+      - SECURITY_AGENT_URL=http://security_agent:8003
+      - MCP_TRANSPORT=sse
+      - SUPERVISOR_HOST=0.0.0.0
+      - SUPERVISOR_PORT=8800
+      - SUPERVISOR_HTTP_PATH=mcp
+    depends_on:
+      - quest_generation_agent
+      - economy_management_agent
+      - security_agent
+    networks:
+      - gami_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  gami_network:
+    driver: bridge
